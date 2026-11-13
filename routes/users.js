@@ -1,6 +1,6 @@
 'use strict';
 const router = require('express').Router();
-const { db, admin, auth } = require('../config/firebase');
+const {db, auth, FieldValue} = require('../config/firebase');
 const { requireUser } = require('../middleware/auth');
 const { validate, Schemas } = require('../middleware/validate');
 
@@ -20,7 +20,7 @@ router.get('/me/addresses', requireUser, async (req,res) => {
 
 router.post('/me/addresses', requireUser, validate(Schemas.addressCreate||{}), async (req,res) => {
   try {
-    const ref = await db.collection('users').doc(req.uid).collection('savedAddresses').add({ ...req.body, createdAt:admin.firestore.FieldValue.serverTimestamp() });
+    const ref = await db.collection('users').doc(req.uid).collection('savedAddresses').add({ ...req.body, createdAt:FieldValue.serverTimestamp() });
     res.status(201).json({ id:ref.id });
   } catch(e) { res.status(500).json({ error:'Failed to save address' }); }
 });

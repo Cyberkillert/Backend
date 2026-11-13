@@ -1,6 +1,6 @@
 'use strict';
 const router = require('express').Router();
-const { db, admin } = require('../config/firebase');
+const {db, FieldValue} = require('../config/firebase');
 const { requireUser, requireSeller, requireAdmin } = require('../middleware/auth');
 const { validate, Schemas } = require('../middleware/validate');
 
@@ -33,7 +33,7 @@ router.post('/', requireAdmin, validate(Schemas.couponCreate||{}), async (req,re
   try {
     const ex = await db.collection('coupons').where('code','==',req.body.code).limit(1).get();
     if (!ex.empty) return res.status(409).json({ error:'Code already exists' });
-    const ref = await db.collection('coupons').add({ ...req.body, type:'global', active:true, createdBy:req.uid, createdAt:admin.firestore.FieldValue.serverTimestamp() });
+    const ref = await db.collection('coupons').add({ ...req.body, type:'global', active:true, createdBy:req.uid, createdAt:FieldValue.serverTimestamp() });
     res.status(201).json({ id:ref.id });
   } catch(e) { res.status(500).json({ error:'Failed to create coupon' }); }
 });
@@ -42,7 +42,7 @@ router.post('/seller', requireSeller, validate(Schemas.couponCreate||{}), async 
   try {
     const ex = await db.collection('coupons').where('code','==',req.body.code).limit(1).get();
     if (!ex.empty) return res.status(409).json({ error:'Code already exists' });
-    const ref = await db.collection('coupons').add({ ...req.body, type:'seller', sellerId:req.uid, active:true, createdAt:admin.firestore.FieldValue.serverTimestamp() });
+    const ref = await db.collection('coupons').add({ ...req.body, type:'seller', sellerId:req.uid, active:true, createdAt:FieldValue.serverTimestamp() });
     res.status(201).json({ id:ref.id });
   } catch(e) { res.status(500).json({ error:'Failed to create coupon' }); }
 });

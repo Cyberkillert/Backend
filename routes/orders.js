@@ -1,6 +1,6 @@
 'use strict';
 const router = require('express').Router();
-const { db, admin } = require('../config/firebase');
+const {db, FieldValue} = require('../config/firebase');
 const { requireUser, requireSeller } = require('../middleware/auth');
 const { validate, Schemas } = require('../middleware/validate');
 const { auditLog } = require('../middleware/audit');
@@ -61,12 +61,12 @@ router.post('/', requireUser, validate(Schemas.orderCreate||{}), async (req,res)
     const order = { orderId, userId:req.uid, userEmail:req.email, items:orderItems, address, pinCode,
       payment, subtotal, deliveryFee, couponCode:appliedCouponId?couponCode.toUpperCase():null,
       couponDiscount, total, deliveryOtp:otp, otpVerified:false, deliveryPartnerId:null,
-      status:'pending', createdAt:admin.firestore.FieldValue.serverTimestamp(), updatedAt:admin.firestore.FieldValue.serverTimestamp() };
+      status:'pending', createdAt:FieldValue.serverTimestamp(), updatedAt:FieldValue.serverTimestamp() };
     const ref = await db.collection('orders').add(order);
-    if (appliedCouponId) await db.collection('couponClaims').add({ couponId:appliedCouponId, userId:req.uid, orderId:ref.id, createdAt:admin.firestore.FieldValue.serverTimestamp() });
+    if (appliedCouponId) await db.collection('couponClaims').add({ couponId:appliedCouponId, userId:req.uid, orderId:ref.id, createdAt:FieldValue.serverTimestamp() });
     // Notify sellers
     const sids = [...new Set(orderItems.map(i=>i.sellerId).filter(Boolean))];
-    await Promise.all(sids.map(sid=>db.collection('notifications').add({ targetUserId:sid, title:'🛒 New Order!', message:`Order #${orderId} — ₹${total}`, type:'order', active:true, orderId:ref.id, createdAt:admin.firestore.FieldValue.serverTimestamp() }).catch(()=>{})));
+    await Promise.all(sids.map(sid=>db.collection('notifications').add({ targetUserId:sid, title:'🛒 New Order!', message:`Order #${orderId} — ₹${total}`, type:'order', active:true, orderId:ref.id, createdAt:FieldValue.serverTimestamp() }).catch(()=>{})));
     res.status(201).json({ id:ref.id, orderId, total, deliveryFee, couponDiscount });
   } catch(e) { console.error('Order error:',e); res.status(500).json({ error:'Failed to place order' }); }
 });
@@ -103,10 +103,10 @@ router.post('/:id/cancel', requireUser, validate(Schemas.orderCancel||{}), async
     const data = doc.data();
     if (data.userId!==req.uid) return res.status(403).json({ error:'Forbidden' });
     if (data.status!=='pending') return res.status(400).json({ error:`Cannot cancel: status is ${data.status}` });
-    await ref.update({ status:'cancelled', cancelReason:req.body.reason, cancelledBy:'user', cancelledAt:admin.firestore.FieldValue.serverTimestamp(), updatedAt:admin.firestore.FieldValue.serverTimestamp() });
+    await ref.update({ status:'cancelled', cancelReason:req.body.reason, cancelledBy:'user', cancelledAt:FieldValue.serverTimestamp(), updatedAt:FieldValue.serverTimestamp() });
     // Restore stock
     const batch = db.batch();
-    (data.items||[]).forEach(i=>{ if(i.productId) batch.update(db.collection('products').doc(i.productId),{ stock:admin.firestore.FieldValue.increment(i.qty||1) }); });
+    (data.items||[]).forEach(i=>{ if(i.productId) batch.update(db.collection('products').doc(i.productId),{ stock:FieldValue.increment(i.qty||1) }); });
     await batch.commit();
     await auditLog(req.uid,'order_cancel',{ orderId:req.params.id });
     res.json({ success:true });
@@ -123,13 +123,13 @@ router.patch('/:id/status', requireSeller, validate(Schemas.orderStatus||{}), as
     if (!(data.items||[]).some(i=>i.sellerId===req.uid)) return res.status(403).json({ error:'Forbidden' });
     const transitions = { pending:['accepted','cancelled'], accepted:['packed','cancelled'], packed:[] };
     if (!(transitions[data.status]||[]).includes(status)) return res.status(400).json({ error:`Cannot transition from ${data.status} to ${status}` });
-    const update = { status, updatedAt:admin.firestore.FieldValue.serverTimestamp() };
+    const update = { status, updatedAt:FieldValue.serverTimestamp() };
     if (status==='cancelled') { update.cancelReason=reason||'Cancelled by seller'; update.cancelledBy='seller'; }
     await ref.update(update);
     if (data.userId) {
       const msgs = { accepted:{t:'✅ Order Accepted',m:`Your order #${data.orderId} was accepted.`}, packed:{t:'📦 Order Packed',m:`Your order #${data.orderId} is packed and awaiting pickup.`}, cancelled:{t:'❌ Order Cancelled',m:`Your order #${data.orderId} was cancelled. Reason: ${reason||'N/A'}`} };
       const n = msgs[status];
-      if (n) await db.collection('notifications').add({ targetUserId:data.userId, title:n.t, message:n.m, type:'order', active:true, orderId:req.params.id, createdAt:admin.firestore.FieldValue.serverTimestamp() });
+      if (n) await db.collection('notifications').add({ targetUserId:data.userId, title:n.t, message:n.m, type:'order', active:true, orderId:req.params.id, createdAt:FieldValue.serverTimestamp() });
     }
     await auditLog(req.uid,`order_${status}`,{ orderId:req.params.id });
     res.json({ success:true, status });

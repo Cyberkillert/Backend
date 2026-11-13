@@ -1,6 +1,6 @@
 'use strict';
 const router = require('express').Router();
-const { db, admin } = require('../config/firebase');
+const {db, FieldValue} = require('../config/firebase');
 const { requireAdmin } = require('../middleware/auth');
 const { validate, Schemas } = require('../middleware/validate');
 const { auditLog } = require('../middleware/audit');
@@ -35,7 +35,7 @@ router.get('/sellers', async (req,res) => {
 
 router.patch('/sellers/:id', validate(Schemas.sellerStatus||{}), async (req,res) => {
   try {
-    await db.collection('sellers').doc(req.params.id).update({ status:req.body.status, ...(req.body.reason?{rejectionReason:req.body.reason}:{}), updatedAt:admin.firestore.FieldValue.serverTimestamp() });
+    await db.collection('sellers').doc(req.params.id).update({ status:req.body.status, ...(req.body.reason?{rejectionReason:req.body.reason}:{}), updatedAt:FieldValue.serverTimestamp() });
     await auditLog(req.uid,`seller_${req.body.status}`,{ sellerId:req.params.id });
     res.json({ success:true });
   } catch(e) { res.status(500).json({ error:'Failed' }); }
@@ -55,7 +55,7 @@ router.patch('/orders/:id/status', async (req,res) => {
   try {
     const allowed=['pending','accepted','packed','shipped','out_for_delivery','delivered','cancelled'];
     if (!allowed.includes(req.body.status)) return res.status(400).json({ error:'Invalid status' });
-    await db.collection('orders').doc(req.params.id).update({ status:req.body.status, updatedAt:admin.firestore.FieldValue.serverTimestamp() });
+    await db.collection('orders').doc(req.params.id).update({ status:req.body.status, updatedAt:FieldValue.serverTimestamp() });
     await auditLog(req.uid,'admin_order_status',{ orderId:req.params.id, status:req.body.status });
     res.json({ success:true });
   } catch(e) { res.status(500).json({ error:'Failed' }); }
@@ -73,7 +73,7 @@ router.get('/reports', async (req,res) => {
 
 router.patch('/reports/:id', async (req,res) => {
   try {
-    await db.collection('reports').doc(req.params.id).update({ status:'resolved', resolvedAt:admin.firestore.FieldValue.serverTimestamp(), resolvedBy:req.uid });
+    await db.collection('reports').doc(req.params.id).update({ status:'resolved', resolvedAt:FieldValue.serverTimestamp(), resolvedBy:req.uid });
     res.json({ success:true });
   } catch(e) { res.status(500).json({ error:'Failed' }); }
 });
@@ -95,7 +95,7 @@ router.get('/users', async (req,res) => {
 
 router.post('/notifications', validate(Schemas.notification||{}), async (req,res) => {
   try {
-    await db.collection('notifications').add({ ...req.body, active:true, createdAt:admin.firestore.FieldValue.serverTimestamp() });
+    await db.collection('notifications').add({ ...req.body, active:true, createdAt:FieldValue.serverTimestamp() });
     res.status(201).json({ success:true });
   } catch(e) { res.status(500).json({ error:'Failed' }); }
 });
