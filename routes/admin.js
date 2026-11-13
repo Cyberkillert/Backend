@@ -1,6 +1,6 @@
 'use strict';
 const router = require('express').Router();
-const {db, FieldValue} = require('../config/firebase');
+const { db, admin } = require('../config/firebase');
 const { requireAdmin } = require('../middleware/auth');
 const { validate, Schemas } = require('../middleware/validate');
 const { auditLog } = require('../middleware/audit');
@@ -35,7 +35,11 @@ router.get('/sellers', async (req,res) => {
 
 router.patch('/sellers/:id', validate(Schemas.sellerStatus||{}), async (req,res) => {
   try {
-    await db.collection('sellers').doc(req.params.id).update({ status:req.body.status, ...(req.body.reason?{rejectionReason:req.body.reason}:{}), updatedAt:FieldValue.serverTimestamp() });
+    const sref = db.collection('sellers').doc(req.params.id), sdoc = await sref.get();
+    if (!sdoc.exists) return res.status(404).json({ error:'Not found' });
+    await sref.update({ status:req.body.status, ...(req.body.reason?{rejectionReason:req.body.reason}:{}), updatedAt:admin.firestore.FieldValue.serverTimestamp() });
+    const uref = db.collection('users').doc(sdoc.data().userId), u = await uref.get();
+    if (u.exists && u.data().role!=='admin') await uref.update({ role: req.body.status==='approved' ? 'seller' : 'user' });
     await auditLog(req.uid,`seller_${req.body.status}`,{ sellerId:req.params.id });
     res.json({ success:true });
   } catch(e) { res.status(500).json({ error:'Failed' }); }
@@ -53,12 +57,16 @@ router.get('/orders', async (req,res) => {
 
 router.patch('/orders/:id/status', async (req,res) => {
   try {
-    const allowed=['pending','accepted','packed','shipped','out_for_delivery','delivered','cancelled'];
-    if (!allowed.includes(req.body.status)) return res.status(400).json({ error:'Invalid status' });
-    await db.collection('orders').doc(req.params.id).update({ status:req.body.status, updatedAt:FieldValue.serverTimestamp() });
-    await auditLog(req.uid,'admin_order_status',{ orderId:req.params.id, status:req.body.status });
+    const { status, reason } = req.body;
+    const L = require('../utils/lifecycle');
+    if (!Object.keys(L.FLOW).concat(L.TERMINAL).includes(status)) return res.status(400).json({ error:'Invalid status' });
+    if (['cancelled','returned','delivered'].includes(status) && !reason) return res.status(400).json({ error:'A reason is required' });
+    const extra = status==='delivered' ? { forceDelivered:true, otpVerified:false } : {};
+    const o = await L.transition(req.params.id, status, { actor:'admin', uid:req.uid, note:reason||'', extra });
+    if (status==='cancelled') await L.notify(o.userId,'Order cancelled',`Your order #${o.orderId} was cancelled. ${reason}`,o.id,'order');
+    await auditLog(req.uid,'admin_order_status',{ orderId:req.params.id, from:o.status, status, reason:reason||'' });
     res.json({ success:true });
-  } catch(e) { res.status(500).json({ error:'Failed' }); }
+  } catch(e) { res.status(e.status||500).json({ error:e.status?e.message:'Failed' }); }
 });
 
 router.get('/reports', async (req,res) => {
@@ -73,7 +81,7 @@ router.get('/reports', async (req,res) => {
 
 router.patch('/reports/:id', async (req,res) => {
   try {
-    await db.collection('reports').doc(req.params.id).update({ status:'resolved', resolvedAt:FieldValue.serverTimestamp(), resolvedBy:req.uid });
+    await db.collection('reports').doc(req.params.id).update({ status:'resolved', resolvedAt:admin.firestore.FieldValue.serverTimestamp(), resolvedBy:req.uid });
     res.json({ success:true });
   } catch(e) { res.status(500).json({ error:'Failed' }); }
 });
@@ -95,7 +103,7 @@ router.get('/users', async (req,res) => {
 
 router.post('/notifications', validate(Schemas.notification||{}), async (req,res) => {
   try {
-    await db.collection('notifications').add({ ...req.body, active:true, createdAt:FieldValue.serverTimestamp() });
+    await db.collection('notifications').add({ ...req.body, active:true, createdAt:admin.firestore.FieldValue.serverTimestamp() });
     res.status(201).json({ success:true });
   } catch(e) { res.status(500).json({ error:'Failed' }); }
 });

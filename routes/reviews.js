@@ -1,6 +1,6 @@
 'use strict';
 const router = require('express').Router();
-const {db, auth, FieldValue} = require('../config/firebase');
+const { db, admin, auth } = require('../config/firebase');
 const { requireUser } = require('../middleware/auth');
 const { validate, Schemas } = require('../middleware/validate');
 
@@ -19,7 +19,7 @@ router.post('/:productId', requireUser, validate(Schemas.reviewCreate||{}), asyn
     const oSnap = await db.collection('orders').where('userId','==',req.uid).where('status','==','delivered').get();
     const verified = oSnap.docs.some(d=>(d.data().items||[]).some(i=>i.productId===req.params.productId));
     const fu = await auth.getUser(req.uid);
-    await pRef.collection('reviews').add({ ...req.body, userId:req.uid, userName:fu.displayName||'User', userPhoto:fu.photoURL||'', verified, helpfulCount:0, createdAt:FieldValue.serverTimestamp() });
+    await pRef.collection('reviews').add({ ...req.body, userId:req.uid, userName:fu.displayName||'User', userPhoto:fu.photoURL||'', verified, helpfulCount:0, createdAt:admin.firestore.FieldValue.serverTimestamp() });
     const all = await pRef.collection('reviews').get();
     const ratings = all.docs.map(d=>d.data().rating||0);
     const avg = ratings.length ? ratings.reduce((a,b)=>a+b,0)/ratings.length : 0;

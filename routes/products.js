@@ -1,6 +1,6 @@
 'use strict';
 const router = require('express').Router();
-const {db, FieldValue} = require('../config/firebase');
+const { db, admin } = require('../config/firebase');
 const { verifyToken, requireSeller } = require('../middleware/auth');
 const { validate, Schemas } = require('../middleware/validate');
 
@@ -30,7 +30,7 @@ router.get('/:id', async (req,res) => {
   try {
     const doc = await db.collection('products').doc(req.params.id).get();
     if (!doc.exists||doc.data().status==='deleted') return res.status(404).json({ error:'Not found' });
-    doc.ref.update({ views: FieldValue.increment(1) }).catch(()=>{});
+    doc.ref.update({ views: admin.firestore.FieldValue.increment(1) }).catch(()=>{});
     res.json({ id:doc.id,...doc.data() });
   } catch(e) { res.status(500).json({ error:'Failed to load product' }); }
 });
@@ -39,7 +39,7 @@ router.post('/', requireSeller, validate(Schemas.productCreate||{}), async (req,
   try {
     const b = req.body;
     const stock = b.variants?.length ? b.variants.reduce((s,v)=>s+v.stock,0) : (b.stock||0);
-    const ref = await db.collection('products').add({ ...b, stock, sellerId:req.uid, sellerName:req.seller?.storeName||'', status:'active', rating:0, reviews:0, views:0, createdAt:FieldValue.serverTimestamp(), updatedAt:FieldValue.serverTimestamp() });
+    const ref = await db.collection('products').add({ ...b, stock, sellerId:req.uid, sellerName:req.seller?.storeName||'', status:'active', rating:0, reviews:0, views:0, createdAt:admin.firestore.FieldValue.serverTimestamp(), updatedAt:admin.firestore.FieldValue.serverTimestamp() });
     res.status(201).json({ id:ref.id });
   } catch(e) { res.status(500).json({ error:'Failed to create product' }); }
 });
@@ -50,7 +50,7 @@ router.patch('/:id', requireSeller, validate(Schemas.productUpdate||{}), async (
     const doc = await ref.get();
     if (!doc.exists) return res.status(404).json({ error:'Not found' });
     if (doc.data().sellerId!==req.uid) return res.status(403).json({ error:'Forbidden' });
-    const updates = { ...req.body, sellerId:doc.data().sellerId, updatedAt:FieldValue.serverTimestamp() };
+    const updates = { ...req.body, sellerId:doc.data().sellerId, updatedAt:admin.firestore.FieldValue.serverTimestamp() };
     if (updates.variants?.length) updates.stock = updates.variants.reduce((s,v)=>s+v.stock,0);
     await ref.update(updates);
     res.json({ success:true });
@@ -63,7 +63,7 @@ router.delete('/:id', requireSeller, async (req,res) => {
     const doc = await ref.get();
     if (!doc.exists) return res.status(404).json({ error:'Not found' });
     if (doc.data().sellerId!==req.uid) return res.status(403).json({ error:'Forbidden' });
-    await ref.update({ status:'deleted', updatedAt:FieldValue.serverTimestamp() });
+    await ref.update({ status:'deleted', updatedAt:admin.firestore.FieldValue.serverTimestamp() });
     res.json({ success:true });
   } catch(e) { res.status(500).json({ error:'Failed to delete product' }); }
 });
