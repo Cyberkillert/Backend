@@ -15,16 +15,16 @@ async function verifyToken(req, res, next) {
 
 async function requireAdmin(req, res, next) {
   await verifyToken(req, res, async () => {
-    const doc = await db.collection('admins').doc(req.uid).get();
-    if (!doc.exists) return res.status(403).json({ error: 'Admin access required' });
+    const [a, u] = await Promise.all([db.collection('admins').doc(req.uid).get(), db.collection('users').doc(req.uid).get()]);
+    if (!a.exists && u.data()?.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
     req.role = 'admin'; next();
   });
 }
 
 async function requireSeller(req, res, next) {
   await verifyToken(req, res, async () => {
-    const snap = await db.collection('sellers').where('userId','==',req.uid).where('status','==','active').limit(1).get();
-    if (snap.empty) return res.status(403).json({ error: 'Active seller account required' });
+    const snap = await db.collection('sellers').where('userId','==',req.uid).where('status','==','approved').limit(1).get();
+    if (snap.empty) return res.status(403).json({ error: 'Approved seller account required' });
     req.seller = { id: snap.docs[0].id, ...snap.docs[0].data() }; req.role = 'seller'; next();
   });
 }
