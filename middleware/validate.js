@@ -48,7 +48,14 @@ if (z) {
     returnPolicy: z.object({ enabled:z.boolean(), days:z.number().int().positive().max(365).optional(), freeReturn:z.boolean().optional() }).default({enabled:false}),
   });
 
-  Schemas.productUpdate = Schemas.productCreate.partial();
+  // zod 4 applies .default() even inside .partial(), which would reset omitted fields on PATCH.
+  // Build the update schema from the same shape with defaults stripped.
+  const stripDefaults = (shape) => Object.fromEntries(Object.entries(shape).map(([k, f]) => {
+    let t = f;
+    while (t && t.def && t.def.type === 'default') t = t.def.innerType;
+    return [k, t.optional()];
+  }));
+  Schemas.productUpdate = z.object(stripDefaults(Schemas.productCreate.shape));
 
   Schemas.orderCreate = z.object({
     items: z.array(z.object({ productId:sid, qty:z.number().int().positive().max(1000), size:s(50).default(''), color:s(50).default('') })).min(1).max(50),
